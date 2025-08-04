@@ -4,7 +4,10 @@ import matplotlib.pyplot as plt
 from math import comb
 
 
-def generate_random_graph(n, target_density):
+def generate_random_graph(n, target_density, seed: int | None = None):
+    if seed is not None:
+        random.seed(seed)
+
     max_edges = comb(n, 2)
     min_edges = n - 1  # 최소 n-1개는 있어야 모든 노드가 연결된 상태가 됨
 
@@ -41,18 +44,19 @@ def generate_random_graph(n, target_density):
     return G
 
 
-# 파라미터 설정
-n = 4  # 노드 수
-density = random.random()  # 밀도 (0~1)
+if __name__ == "__main__":
+    # 파라미터 설정
+    n = 4  # 노드 수
+    density = random.random()  # 밀도 (0~1)
 
-G = generate_random_graph(n, density)
+    G = generate_random_graph(n, density)
 
-# 시각화
-nx.draw(G, with_labels=True)
-plt.title(f"Random Graph (n={n}, density={density:.2f})")
-plt.show()
+    # 시각화
+    nx.draw(G, with_labels=True)
+    plt.title(f"Random Graph (n={n}, density={density:.2f})")
+    plt.show()
 
-# 유효성 확인
-print("모든 노드 degree ≥ 1:", all(dict(G.degree()).values()))  # type: ignore
-print("자기 루프 있음?", nx.number_of_selfloops(G) > 0)
-print("총 간선 수:", G.number_of_edges())
+    # 유효성 확인
+    print("모든 노드 degree ≥ 1:", all(dict(G.degree()).values()))  # type: ignore
+    print("자기 루프 있음?", nx.number_of_selfloops(G) > 0)
+    print("총 간선 수:", G.number_of_edges())
