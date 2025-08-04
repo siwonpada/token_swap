@@ -54,13 +54,14 @@ class TokenSwapEnv(gym.Env):
     def step(
         self, action: tuple[int, int]
     ) -> tuple[Any, float, bool, bool, dict[str, Any]]:
-        self.swap(action[0], action[1])
+        error = self.swap(action[0], action[1])
         done = np.array_equal(self.current_map, self.final_map)
         if done:
             reward = 1.0
         else:
             reward = -0.1  # Penalty for each step taken
-
+        if error:
+            reward -= 0.5  # Penalty for invalid swap
         return self.observation(), reward, done, False, {}
 
     def observation(self) -> dict[str, Any]:
@@ -74,18 +75,21 @@ class TokenSwapEnv(gym.Env):
             "final_map": self.final_map,
         }
 
-    def swap(self, u: int, v: int) -> None:
+    def swap(self, u: int, v: int) -> bool:
         """Swap the positions of nodes u and v in the current map."""
+        if not self.graph.has_edge(u, v):  # Ensure the edge exists
+            return True  # Cannot swap if there is an edge between them
         self.current_map[u], self.current_map[v] = (
             self.current_map[v],
             self.current_map[u],
         )
-        return
+        return False  # Successful swap
 
 
 if __name__ == "__main__":
     env = TokenSwapEnv(node_num=4, seed=100)
     obs, _ = env.reset()
+    print("Initial Observation:", obs)
     while True:
         action = (int(input("first node: ")), int(input("second node: ")))
         obs, reward, done, _, _ = env.step(action)
