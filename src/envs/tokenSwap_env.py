@@ -87,7 +87,7 @@ class TokenSwapEnv(gym.Env):
 
 
 if __name__ == "__main__":
-    env = TokenSwapEnv(node_num=4, seed=100)
+    env = TokenSwapEnv(node_num=20, seed=100)
     obs, _ = env.reset()
     print("Initial Observation:", obs)
     while True:

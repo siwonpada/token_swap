@@ -48,7 +48,11 @@ class CandidateGraphWrapper(gym.Wrapper):
     def step(
         self, action: int
     ) -> tuple[dict[str, Any], SupportsFloat, bool, bool, dict[str, Any]]:
-        obs, reward, done, truncated, info = self.env.step(self.candidate[action][0])
+        if len(self.candidate) <= action:
+            swap_action = (0, 0)  # Default action if out of range
+        else:
+            swap_action = self.candidate[action][0]
+        obs, reward, done, truncated, info = self.env.step(swap_action)
         return (
             self.observation(obs["graph"], obs["current_map"], obs["final_map"]),
             reward,
@@ -97,12 +101,12 @@ class CandidateGraphWrapper(gym.Wrapper):
 
 if __name__ == "__main__":
     wrapped_env = CandidateGraphWrapper(
-        TokenSwapEnv(node_num=4, seed=100), candidate_num=3
+        TokenSwapEnv(node_num=4, seed=100), candidate_num=10
     )
     obs, info = wrapped_env.reset()
     print("Initial Observation:", obs)
     while True:
-        action = int(input("Select candidate edge (0-2): "))
+        action = int(input("Select candidate edge (0-9): "))
         obs, reward, done, _, _ = wrapped_env.step(action)
         print("Observation:", obs)
         print("Reward:", reward)
