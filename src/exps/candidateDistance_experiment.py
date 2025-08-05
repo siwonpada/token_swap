@@ -1,21 +1,29 @@
-ENV_ID = "CoRoutingEnv"
+import gymnasium as gym
+import os
+from gymnasium.envs.registration import WrapperSpec
+from typing import Any, Dict
 
-gym.register(id=ENV_ID, entry_point=CoRoutingEnv)  # type: ignore
 
-N_TRIALS = 2000
-N_STARTUP_TRIALS = 10
-N_EVALUATIONS = 5
-N_TIMESTEPS = int(1e7)
-N_WORKERS = 16
-EVAL_FREQ = int(N_TIMESTEPS / (N_EVALUATIONS * N_WORKERS))
+EX_NAME = "candidateGraph_experiment"
+ENV_ID = "TokenSwapEnv"
+gym.register(
+    id=ENV_ID,
+    entry_point="src.envs:TokenSwapEnv",
+    additional_wrappers=(
+        WrapperSpec("candidate_graph", "src.wrappers:CandidateGraphWrapper", None),
+    ),
+)
+
+N_TRIALS = 100
+N_STARTUP_TRIALS = 5
+N_EVALUATIONS = 10
 N_EVAL_EPISODES = 5
+N_TIMESTEPS = int(1e6)  # 1M
+N_WORKERS = 16  # for parallel training
+EVAL_FREQ = int(N_TIMESTEPS / (N_EVALUATIONS * N_WORKERS))
 
 DEFAULT_HYPERPARAMS = {
     "policy": "MultiInputPolicy",
-    "policy_kwargs": dict(
-        features_extractor_class=GNNFeatureExtractor,
-        features_extractor_kwargs=dict(features_dim=128),
-    ),
 }
 
 
@@ -45,14 +53,10 @@ def sample_ppo_params(trial: optuna.Trial) -> Dict[str, Any]:
     }
 
 
-EX_NAME = "GNN_method"
-
-
-def make_env():
-    return Monitor(gym.make(ENV_ID, start_level=1, max_episode_steps=1000))
-
-
 def objective(trial: optuna.Trial) -> float:
+    def make_env():
+        return Monitor(gym.make(ENV_ID, start_level=1, max_episode_steps=1000))
+
     env = SubprocVecEnv([make_env for _ in range(N_WORKERS)])
     kwargs = DEFAULT_HYPERPARAMS.copy()
     # Sample hyperparameters.
@@ -106,44 +110,48 @@ def objective(trial: optuna.Trial) -> float:
 
 
 if __name__ == "__main__":
+    result_dir = f"./result/{EX_NAME}"
+    if not os.path.exists("./result"):
+        os.makedirs("./result")
+    if not os.path.exists(result_dir):
+        os.makedirs(result_dir)
+
+    # Set up the study.
+    print("Setting up the study...")
     sampler = TPESampler(n_startup_trials=N_STARTUP_TRIALS)
     # Do not prune before 1/3 of the max budget is used.
     pruner = MedianPruner(
         n_startup_trials=N_STARTUP_TRIALS, n_warmup_steps=N_EVALUATIONS // 3
     )
-
-    if not os.path.exists(EX_NAME):
-        os.makedirs(EX_NAME)
-
-    if not os.path.exists(f"./{EX_NAME}/study.db"):
+    if not os.path.exists(f"./{result_dir}/study.db"):
         study = optuna.create_study(
             study_name=EX_NAME,
             sampler=sampler,
             pruner=pruner,
             direction="maximize",
-            storage=f"sqlite:///{EX_NAME}/study.db",
+            storage=f"sqlite:///{result_dir}/study.db",
         )
     else:
         print("Loading existing study...")
         study = optuna.load_study(
-            study_name=EX_NAME, storage=f"sqlite:///{EX_NAME}/study.db"
+            study_name=EX_NAME,
+            sampler=sampler,
+            pruner=pruner,
+            storage=f"sqlite:///{result_dir}/study.db",
         )
+
     try:
-        study.optimize(objective, n_trials=N_TRIALS, timeout=60 * 60 * 12)  # 12 hours
+        study.optimize(objective, n_trials=N_TRIALS, timeout=60 * 60 * 24 * 7)  # 1 week
     except KeyboardInterrupt:
         pass
 
     print("Number of finished trials: ", len(study.trials))
-
     print("Best trial:")
     trial = study.best_trial
-
     print("  Value: ", trial.value)
-
     print("  Params: ")
     for key, value in trial.params.items():
         print("    {}: {}".format(key, value))
-
     print("  User attrs:")
     for key, value in trial.user_attrs.items():
         print("    {}: {}".format(key, value))

@@ -1,6 +1,8 @@
 {
     "cSpell.words": [
+        "HYPERPARAMS",
         "ndarray",
-        "selfloops"
+        "selfloops",
+        "TIMESTEPS"
     ]
 }
