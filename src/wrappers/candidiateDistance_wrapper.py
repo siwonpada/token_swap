@@ -4,14 +4,17 @@ import random
 import networkx as nx
 
 from typing import Any, SupportsFloat
-from src.envs.tokenSwap_env import TokenSwapEnv
+from gymnasium.utils import RecordConstructorArgs
+
+from src.envs import TokenSwapEnv
 
 
-class candidateDistanceWrapper(gym.Wrapper):
-    def __init__(self, env: TokenSwapEnv, candidate_num: int):
+class CandidateDistanceWrapper(gym.Wrapper, RecordConstructorArgs):
+    def __init__(self, env: gym.Env, candidate_num: int):
+        RecordConstructorArgs.__init__(self, candidate_num=candidate_num)
         super().__init__(env)
         self.env = env
-        self.node_num = env.node_num
+        self.node_num = env.unwrapped.node_num  # type: ignore
         self.candidate_num = candidate_num
         self.candidate = []
 
@@ -23,7 +26,10 @@ class candidateDistanceWrapper(gym.Wrapper):
     def reset(self, **kwargs) -> tuple[Any, dict[str, Any]]:
         obs, info = self.env.reset(**kwargs)
         return self.observation(
-            obs["graph"], obs["current_map"], obs["final_map"], self.env.graph
+            obs["graph"],
+            obs["current_map"],
+            obs["final_map"],
+            self.env.unwrapped.graph,  # type: ignore
         ), info
 
     def step(
@@ -36,7 +42,10 @@ class candidateDistanceWrapper(gym.Wrapper):
         obs, reward, done, truncated, info = self.env.step(swap_action)
         return (
             self.observation(
-                obs["graph"], obs["current_map"], obs["final_map"], self.env.graph
+                obs["graph"],
+                obs["current_map"],
+                obs["final_map"],
+                self.env.unwrapped.graph,  # type: ignore
             ),
             reward,
             done,
@@ -89,7 +98,7 @@ class candidateDistanceWrapper(gym.Wrapper):
 
 
 if __name__ == "__main__":
-    wrapped_env = candidateDistanceWrapper(
+    wrapped_env = CandidateDistanceWrapper(
         TokenSwapEnv(node_num=4, seed=100), candidate_num=10
     )
     obs, info = wrapped_env.reset()

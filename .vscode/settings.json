@@ -4,5 +4,8 @@
         "ndarray",
         "selfloops",
         "TIMESTEPS"
-    ]
+    ],
+    "terminal.integrated.env.windows": {
+        "PYTHONPATH": "${workspaceFolder}"
+    }
 }

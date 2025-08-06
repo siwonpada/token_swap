@@ -46,7 +46,7 @@ class TokenSwapEnv(gym.Env):
         self.graph = generate_random_graph(
             self.node_num, random.random(), seed=random.randint(0, 10000)
         )
-        self.initial_map = np.arange(self.node_num)
+        self.initial_map = np.arange(self.node_num, dtype=np.int32)
         self.current_map = self.initial_map.copy()
         self.final_map = np.random.permutation(self.initial_map)
         return self.observation(), {}
@@ -67,8 +67,8 @@ class TokenSwapEnv(gym.Env):
     def observation(self) -> dict[str, Any]:
         return {
             "graph": gym.spaces.GraphInstance(
-                nodes=np.array(list(self.graph)),
-                edge_links=np.array([e for e in self.graph.edges]),
+                nodes=np.array(list(self.graph), dtype=np.int32),
+                edge_links=np.array([e for e in self.graph.edges], dtype=np.int32),
                 edges=None,
             ),
             "current_map": self.current_map,

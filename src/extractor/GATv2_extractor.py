@@ -1,4 +1,8 @@
 import gymnasium as gym
+import torch
+from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
+from torch_geometric.nn import GATv2Conv, global_mean_pool
+from torch_geometric.data import Data, Batch
 
 
 class GATv2FeatureExtractor(BaseFeaturesExtractor):

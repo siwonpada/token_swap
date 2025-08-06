@@ -1,4 +1,6 @@
 import gymnasium as gym
+import optuna
+from stable_baselines3.common.callbacks import EvalCallback
 
 
 class TrialEvalCallback(EvalCallback):
@@ -26,8 +28,6 @@ class TrialEvalCallback(EvalCallback):
 
     def _on_step(self) -> bool:
         if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
-            train_level = self.training_env.env_method("get_level")
-            self.eval_env.env_method("set_level", level=train_level[0])
             super()._on_step()
             self.eval_idx += 1
             self.trial.report(self.last_mean_reward, self.eval_idx)

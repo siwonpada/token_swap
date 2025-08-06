@@ -1,7 +1,16 @@
 import gymnasium as gym
+import optuna
 import os
 from gymnasium.envs.registration import WrapperSpec
+from stable_baselines3 import PPO
+from stable_baselines3.common.vec_env import SubprocVecEnv
+from stable_baselines3.common.monitor import Monitor
+from optuna.samplers import TPESampler
+from optuna.pruners import MedianPruner
 from typing import Any, Dict
+
+
+from src.callbacks.TrialEval_callback import TrialEvalCallback
 
 
 EX_NAME = "candidateGraph_experiment"
@@ -22,7 +31,7 @@ N_TIMESTEPS = int(1e6)  # 1M
 N_WORKERS = 16  # for parallel training
 EVAL_FREQ = int(N_TIMESTEPS / (N_EVALUATIONS * N_WORKERS))
 
-DEFAULT_HYPERPARAMS = {
+DEFAULT_HYPERPARAMS: Dict[str, Any] = {
     "policy": "MultiInputPolicy",
 }
 
@@ -62,7 +71,7 @@ def objective(trial: optuna.Trial) -> float:
     # Sample hyperparameters.
     kwargs.update(sample_ppo_params(trial))
     # Create the RL model.
-    model = MaskablePPO(
+    model = PPO(
         **kwargs, env=env, tensorboard_log=f"./{EX_NAME}/", verbose=1, device="cuda"
     )
     # Create env used for evaluation.
@@ -82,9 +91,6 @@ def objective(trial: optuna.Trial) -> float:
             N_TIMESTEPS,
             callback=[
                 eval_callback,
-                CurriculumCallback(
-                    verbose=1, success_threshold=0.9, min_training_epi=2500
-                ),
             ],
         )
         model.save(f"./{EX_NAME}/saves/rl_model_{trial.number}")

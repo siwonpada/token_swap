@@ -4,15 +4,18 @@ import numpy as np
 from math import comb
 import random
 
+from gymnasium.utils import RecordConstructorArgs
 from src.envs.tokenSwap_env import TokenSwapEnv
 
 
-class CandidateGraphWrapper(gym.Wrapper):
-    def __init__(self, env: TokenSwapEnv, candidate_num: int):
+class CandidateGraphWrapper(gym.Wrapper, RecordConstructorArgs):
+    def __init__(self, env: gym.Env, candidate_num: int):
         # Initialize the wrapper with the environment
+        RecordConstructorArgs.__init__(self, candidate_num=candidate_num)
         super().__init__(env)
         self.env = env
-        self.node_num = env.node_num
+        # Access node_num from the unwrapped environment
+        self.node_num = env.unwrapped.node_num  # type: ignore
         self.max_edge_num = comb(self.node_num, 2)
         self.candidate_num = candidate_num
         self.candidate = []
