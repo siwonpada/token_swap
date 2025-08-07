@@ -60,9 +60,6 @@ class CandidateDistanceWrapper(gym.Wrapper, RecordConstructorArgs):
         final_map: np.ndarray,
         networkx_graph: nx.Graph,
     ):
-        print(graph)
-        print(current_map)
-        print(final_map)
         node_features = np.append(
             np.expand_dims(current_map, axis=1),
             np.expand_dims(final_map, axis=1),
@@ -76,7 +73,6 @@ class CandidateDistanceWrapper(gym.Wrapper, RecordConstructorArgs):
             if u in candidate_nodes or v in candidate_nodes:
                 self.candidate.append(graph.edge_links[i])
         random.shuffle(self.candidate)
-        print(self.candidate)
 
         distance_changes = np.zeros(self.candidate_num, dtype=np.int32)
         if len(self.candidate) > self.candidate_num:

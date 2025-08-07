@@ -13,13 +13,19 @@ from typing import Any, Dict
 from src.callbacks.TrialEval_callback import TrialEvalCallback
 
 
-EX_NAME = "candidateGraph_experiment"
+EX_NAME = "candidateDistance_experiment_N4"
 ENV_ID = "TokenSwapEnv"
 gym.register(
     id=ENV_ID,
     entry_point="src.envs:TokenSwapEnv",
     additional_wrappers=(
-        WrapperSpec("candidate_graph", "src.wrappers:CandidateGraphWrapper", None),
+        WrapperSpec(
+            "candidate_distance",
+            "src.wrappers:CandidateDistanceWrapper",
+            {
+                "candidate_num": 6,  # N candidates
+            },
+        ),
     ),
 )
 
@@ -32,7 +38,7 @@ N_WORKERS = 16  # for parallel training
 EVAL_FREQ = int(N_TIMESTEPS / (N_EVALUATIONS * N_WORKERS))
 
 DEFAULT_HYPERPARAMS: Dict[str, Any] = {
-    "policy": "MultiInputPolicy",
+    "policy": "MlpPolicy",
 }
 
 
@@ -64,7 +70,7 @@ def sample_ppo_params(trial: optuna.Trial) -> Dict[str, Any]:
 
 def objective(trial: optuna.Trial) -> float:
     def make_env():
-        return Monitor(gym.make(ENV_ID, start_level=1, max_episode_steps=1000))
+        return Monitor(gym.make(ENV_ID, node_num=4, max_episode_steps=1000))
 
     env = SubprocVecEnv([make_env for _ in range(N_WORKERS)])
     kwargs = DEFAULT_HYPERPARAMS.copy()
@@ -72,10 +78,14 @@ def objective(trial: optuna.Trial) -> float:
     kwargs.update(sample_ppo_params(trial))
     # Create the RL model.
     model = PPO(
-        **kwargs, env=env, tensorboard_log=f"./{EX_NAME}/", verbose=1, device="cuda"
+        **kwargs,
+        env=env,
+        tensorboard_log=f"./result/{EX_NAME}/",
+        verbose=1,
+        device="cuda",
     )
     # Create env used for evaluation.
-    eval_env = Monitor(gym.make(ENV_ID, start_level=1))
+    eval_env = make_env()
     # Create the callback that will periodically evaluate and report the performance.
     eval_callback = TrialEvalCallback(
         eval_env,
@@ -93,7 +103,7 @@ def objective(trial: optuna.Trial) -> float:
                 eval_callback,
             ],
         )
-        model.save(f"./{EX_NAME}/saves/rl_model_{trial.number}")
+        model.save(f"./result/{EX_NAME}/saves/rl_model_{trial.number}")
         print("Learning end")
     except AssertionError as e:
         # Sometimes, random hyperparams can generate NaN.
@@ -147,7 +157,7 @@ if __name__ == "__main__":
         )
 
     try:
-        study.optimize(objective, n_trials=N_TRIALS, timeout=60 * 60 * 24 * 7)  # 1 week
+        study.optimize(objective, n_trials=N_TRIALS, timeout=60 * 60 * 24)  # 1 day
     except KeyboardInterrupt:
         pass
 
