@@ -1,7 +1,16 @@
 import gymnasium as gym
+import optuna
+import os
 from gymnasium.envs.registration import WrapperSpec
+from stable_baselines3 import PPO
+from stable_baselines3.common.vec_env import SubprocVecEnv
+from stable_baselines3.common.monitor import Monitor
+from optuna.samplers import TPESampler
+from optuna.pruners import MedianPruner
 from typing import Any, Dict
 
+from src.callbacks.TrialEval_callback import TrialEvalCallback
+from src.extractors.GATv2_extractor import GATv2FeatureExtractor
 
 EX_NAME = "candidateGraph_experiment"
 ENV_ID = "TokenSwapEnv"
@@ -9,22 +18,28 @@ gym.register(
     id=ENV_ID,
     entry_point="src.envs:TokenSwapEnv",
     additional_wrappers=(
-        WrapperSpec("candidate_graph", "src.wrappers:CandidateGraphWrapper", None),
+        WrapperSpec(
+            "candidate_graph",
+            "src.wrappers:CandidateGraphWrapper",
+            {
+                "candidate_num": 6,  # N candidates
+            },
+        ),
     ),
 )
 
-N_TRIALS = 2000
+N_TRIALS = 100
 N_STARTUP_TRIALS = 10
-N_EVALUATIONS = 5
-N_TIMESTEPS = int(1e7)
+N_EVALUATIONS = 10
+N_EVAL_EPISODES = 5
+N_TIMESTEPS = int(1e6)
 N_WORKERS = 16
 EVAL_FREQ = int(N_TIMESTEPS / (N_EVALUATIONS * N_WORKERS))
-N_EVAL_EPISODES = 5
 
 DEFAULT_HYPERPARAMS = {
     "policy": "MultiInputPolicy",
     "policy_kwargs": dict(
-        features_extractor_class=GNNFeatureExtractor,
+        features_extractor_class=GATv2FeatureExtractor,
         features_extractor_kwargs=dict(features_dim=128),
     ),
 }
@@ -56,21 +71,24 @@ def sample_ppo_params(trial: optuna.Trial) -> Dict[str, Any]:
     }
 
 
-def make_env():
-    return Monitor(gym.make(ENV_ID, start_level=1, max_episode_steps=1000))
-
-
 def objective(trial: optuna.Trial) -> float:
+    def make_env():
+        return Monitor(gym.make(ENV_ID, node_num=4, max_episode_steps=1000))
+
     env = SubprocVecEnv([make_env for _ in range(N_WORKERS)])
     kwargs = DEFAULT_HYPERPARAMS.copy()
     # Sample hyperparameters.
     kwargs.update(sample_ppo_params(trial))
     # Create the RL model.
-    model = MaskablePPO(
-        **kwargs, env=env, tensorboard_log=f"./{EX_NAME}/", verbose=1, device="cuda"
+    model = PPO(
+        **kwargs,
+        env=env,
+        tensorboard_log=f"./result/{EX_NAME}/",
+        verbose=1,
+        device="cuda",
     )
     # Create env used for evaluation.
-    eval_env = Monitor(gym.make(ENV_ID, start_level=1))
+    eval_env = make_env()
     # Create the callback that will periodically evaluate and report the performance.
     eval_callback = TrialEvalCallback(
         eval_env,
@@ -86,12 +104,9 @@ def objective(trial: optuna.Trial) -> float:
             N_TIMESTEPS,
             callback=[
                 eval_callback,
-                CurriculumCallback(
-                    verbose=1, success_threshold=0.9, min_training_epi=2500
-                ),
             ],
         )
-        model.save(f"./{EX_NAME}/saves/rl_model_{trial.number}")
+        model.save(f"./result/{EX_NAME}/saves/rl_model_{trial.number}")
         print("Learning end")
     except AssertionError as e:
         # Sometimes, random hyperparams can generate NaN.
@@ -114,44 +129,47 @@ def objective(trial: optuna.Trial) -> float:
 
 
 if __name__ == "__main__":
+    result_dir = f"./result/{EX_NAME}/"
+    if not os.path.exists("./result"):
+        os.makedirs("./result")
+    if not os.path.exists(result_dir):
+        os.makedirs(result_dir)
+
+    # Set up the study.
+    print("Setting up the study...")
     sampler = TPESampler(n_startup_trials=N_STARTUP_TRIALS)
     # Do not prune before 1/3 of the max budget is used.
     pruner = MedianPruner(
         n_startup_trials=N_STARTUP_TRIALS, n_warmup_steps=N_EVALUATIONS // 3
     )
-
-    if not os.path.exists(EX_NAME):
-        os.makedirs(EX_NAME)
-
-    if not os.path.exists(f"./{EX_NAME}/study.db"):
+    if not os.path.exists(f"./result/{EX_NAME}/study.db"):
         study = optuna.create_study(
             study_name=EX_NAME,
             sampler=sampler,
             pruner=pruner,
             direction="maximize",
-            storage=f"sqlite:///{EX_NAME}/study.db",
+            storage=f"sqlite:///{result_dir}/study.db",
         )
     else:
         print("Loading existing study...")
         study = optuna.load_study(
-            study_name=EX_NAME, storage=f"sqlite:///{EX_NAME}/study.db"
+            study_name=EX_NAME,
+            sampler=sampler,
+            pruner=pruner,
+            storage=f"sqlite:///{result_dir}/study.db",
         )
     try:
-        study.optimize(objective, n_trials=N_TRIALS, timeout=60 * 60 * 12)  # 12 hours
+        study.optimize(objective, n_trials=N_TRIALS, timeout=60 * 60 * 24)  # 1 day
     except KeyboardInterrupt:
         pass
 
     print("Number of finished trials: ", len(study.trials))
-
     print("Best trial:")
     trial = study.best_trial
-
     print("  Value: ", trial.value)
-
     print("  Params: ")
     for key, value in trial.params.items():
         print("    {}: {}".format(key, value))
-
     print("  User attrs:")
     for key, value in trial.user_attrs.items():
         print("    {}: {}".format(key, value))

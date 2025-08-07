@@ -7,7 +7,7 @@ from torch_geometric.data import Data, Batch
 
 class GATv2FeatureExtractor(BaseFeaturesExtractor):
     def __init__(
-        self, observation_space: gym.spaces.Dict, features_dim: int = 0
+        self, observation_space: gym.spaces.Dict, features_dim: int = 16
     ) -> None:
         super().__init__(observation_space, features_dim)
         self.node_space = observation_space["nodes"].shape
