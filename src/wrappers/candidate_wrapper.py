@@ -8,7 +8,7 @@ from gymnasium.utils import RecordConstructorArgs
 from src.envs.tokenSwap_env import TokenSwapEnv
 
 
-class CandidateGraphWrapper(gym.Wrapper, RecordConstructorArgs):
+class CandidateWrapper(gym.Wrapper, RecordConstructorArgs):
     def __init__(self, env: gym.Env, candidate_num: int):
         # Initialize the wrapper with the environment
         RecordConstructorArgs.__init__(self, candidate_num=candidate_num)
@@ -33,9 +33,6 @@ class CandidateGraphWrapper(gym.Wrapper, RecordConstructorArgs):
                 "nodes_num": gym.spaces.Box(
                     low=0, high=self.node_num, shape=(1,), dtype=np.int32
                 ),
-                "edges": gym.spaces.Box(
-                    low=0, high=1, shape=(self.max_edge_num,), dtype=np.int32
-                ),
                 "edge_links": gym.spaces.Box(
                     low=0,
                     high=self.node_num - 1,
@@ -44,6 +41,12 @@ class CandidateGraphWrapper(gym.Wrapper, RecordConstructorArgs):
                 ),
                 "edges_num": gym.spaces.Box(
                     low=0, high=self.candidate_num, shape=(1,), dtype=np.int32
+                ),
+                "candidate_edges": gym.spaces.Box(
+                    low=0,
+                    high=self.node_num - 1,
+                    shape=(self.candidate_num, 2),
+                    dtype=np.int32,
                 ),
             }
         )
@@ -60,7 +63,7 @@ class CandidateGraphWrapper(gym.Wrapper, RecordConstructorArgs):
         if len(self.candidate) <= action:
             swap_action = (0, 0)  # Default action if out of range
         else:
-            swap_action = self.candidate[action][0]
+            swap_action = self.candidate[action]
         obs, reward, done, truncated, info = self.env.step(swap_action)
         return (
             self.observation(obs["graph"], obs["current_map"], obs["final_map"]),
@@ -90,30 +93,27 @@ class CandidateGraphWrapper(gym.Wrapper, RecordConstructorArgs):
             mode="constant",
             constant_values=-1,
         )
-        edge = np.full(self.max_edge_num, -1, dtype=np.int32)
         self.candidate = []
         for i, (u, v) in enumerate(graph.edge_links):
             if u in candidate_nodes or v in candidate_nodes:
-                self.candidate.append((graph.edge_links[i], i))
+                self.candidate.append(graph.edge_links[i])
         random.shuffle(self.candidate)
         if len(self.candidate) > self.candidate_num:
             self.candidate = self.candidate[: self.candidate_num]
-        for i, (_, idx) in enumerate(self.candidate):
-            edge[idx] = i
+        if len(self.candidate) < self.candidate_num:
+            self.candidate += [(-1, -1)] * (self.candidate_num - len(self.candidate))
 
         return {
             "nodes": node_features,
             "nodes_num": np.array([self.node_num], dtype=np.int32),
             "edge_links": edge_links,
-            "edges": edge,
             "edges_num": np.array([len(self.candidate)], dtype=np.int32),
+            "candidate_edges": np.array(self.candidate, dtype=np.int32),
         }
 
 
 if __name__ == "__main__":
-    wrapped_env = CandidateGraphWrapper(
-        TokenSwapEnv(node_num=4, seed=100), candidate_num=10
-    )
+    wrapped_env = CandidateWrapper(TokenSwapEnv(node_num=4, seed=100), candidate_num=10)
     obs, info = wrapped_env.reset()
     print("Initial Observation:", obs)
     while True:

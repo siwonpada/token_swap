@@ -12,7 +12,7 @@ from typing import Any, Dict
 from src.callbacks.TrialEval_callback import TrialEvalCallback
 from src.extractors.GATv2_extractor import GATv2FeatureExtractor
 
-EX_NAME = "candidateGraph_experiment"
+EX_NAME = "candidateGraph_experiment_N4"
 ENV_ID = "TokenSwapEnv"
 gym.register(
     id=ENV_ID,
@@ -112,6 +112,9 @@ def objective(trial: optuna.Trial) -> float:
         # Sometimes, random hyperparams can generate NaN.
         print(e)
         nan_encountered = True
+    except KeyboardInterrupt:
+        print("Training interrupted by user.")
+        model.save(f"./result/{EX_NAME}/saves/rl_model_{trial.number}")
     finally:
         # Free memory.
         if model.env is not None:

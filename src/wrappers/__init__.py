@@ -1,2 +1,3 @@
 from .candidateGraph_wrapper import CandidateGraphWrapper
 from .candidiateDistance_wrapper import CandidateDistanceWrapper
+from .candidate_wrapper import CandidateWrapper

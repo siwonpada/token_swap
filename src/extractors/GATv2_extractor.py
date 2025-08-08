@@ -28,23 +28,23 @@ class GATv2FeatureExtractor(BaseFeaturesExtractor):
     def forward(self, observations) -> torch.Tensor:
         batch_size = observations["nodes"].shape[0]
         nodes_num = observations["nodes_num"].long()
-        edge_links_num = observations["edge_links_num"].long()
+        edges_num = observations["edges_num"].long()
 
         # 배치 내 각 그래프에 대해 Data 객체 생성
         data_list = []
         for i in range(batch_size):
             nodes = observations["nodes"][i].float()
+            edges = observations["edges"][i].float()
             edge_index = observations["edge_links"][i].long()
-            edge_attributes = observations["edge_attributes"][i].float()
 
             filtered_nodes = nodes[: nodes_num[i]]
-            filtered_edge_index = edge_index[: edge_links_num[i]]
-            filtered_edge_attributes = edge_attributes[: edge_links_num[i]]
+            filtered_edges = edges[: edges_num[i]]
+            filtered_edge_index = edge_index[: edges_num[i]]
 
             data = Data(
                 x=filtered_nodes,
                 edge_index=filtered_edge_index.T,
-                edge_attr=filtered_edge_attributes,
+                edge_attr=filtered_edges,
             )
             data_list.append(data)
 

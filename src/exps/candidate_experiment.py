@@ -1,6 +1,7 @@
 import gymnasium as gym
 import optuna
 import os
+import torch
 from gymnasium.envs.registration import WrapperSpec
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import SubprocVecEnv
@@ -9,21 +10,20 @@ from optuna.samplers import TPESampler
 from optuna.pruners import MedianPruner
 from typing import Any, Dict
 
-
 from src.callbacks.TrialEval_callback import TrialEvalCallback
+from src.extractors.GAT_extractor import GATConvFeatureExtractor
 
-
-EX_NAME = "candidateDistance_experiment_N10"
+EX_NAME = "candidate_experiment_N4"
 ENV_ID = "TokenSwapEnv"
 gym.register(
     id=ENV_ID,
     entry_point="src.envs:TokenSwapEnv",
     additional_wrappers=(
         WrapperSpec(
-            "candidate_distance",
-            "src.wrappers:CandidateDistanceWrapper",
+            "candidate_graph",
+            "src.wrappers:CandidateWrapper",
             {
-                "candidate_num": 45,  # N candidates
+                "candidate_num": 6,  # N candidates
             },
         ),
     ),
@@ -33,12 +33,16 @@ N_TRIALS = 100
 N_STARTUP_TRIALS = 10
 N_EVALUATIONS = 10
 N_EVAL_EPISODES = 5
-N_TIMESTEPS = int(1e6)  # 1M
-N_WORKERS = 16  # for parallel training
+N_TIMESTEPS = int(1e6)
+N_WORKERS = 16
 EVAL_FREQ = int(N_TIMESTEPS / (N_EVALUATIONS * N_WORKERS))
 
-DEFAULT_HYPERPARAMS: Dict[str, Any] = {
-    "policy": "MlpPolicy",
+DEFAULT_HYPERPARAMS = {
+    "policy": "MultiInputPolicy",
+    "policy_kwargs": dict(
+        features_extractor_class=GATConvFeatureExtractor,
+        features_extractor_kwargs=dict(features_dim=64),
+    ),
 }
 
 
@@ -70,19 +74,21 @@ def sample_ppo_params(trial: optuna.Trial) -> Dict[str, Any]:
 
 def objective(trial: optuna.Trial) -> float:
     def make_env():
-        return Monitor(gym.make(ENV_ID, node_num=10, max_episode_steps=25000))
+        return Monitor(gym.make(ENV_ID, node_num=4, max_episode_steps=1000))
 
     env = SubprocVecEnv([make_env for _ in range(N_WORKERS)])
     kwargs = DEFAULT_HYPERPARAMS.copy()
     # Sample hyperparameters.
     kwargs.update(sample_ppo_params(trial))
     # Create the RL model.
+    # Check CUDA availability
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     model = PPO(
         **kwargs,
         env=env,
         tensorboard_log=f"./result/{EX_NAME}/",
         verbose=1,
-        device="cuda",
+        device=device,
     )
     # Create env used for evaluation.
     eval_env = make_env()
@@ -103,6 +109,8 @@ def objective(trial: optuna.Trial) -> float:
                 eval_callback,
             ],
         )
+        # Ensure saves directory exists before saving
+        os.makedirs(f"./result/{EX_NAME}/saves/", exist_ok=True)
         model.save(f"./result/{EX_NAME}/saves/rl_model_{trial.number}")
         print("Learning end")
     except AssertionError as e:
@@ -110,8 +118,10 @@ def objective(trial: optuna.Trial) -> float:
         print(e)
         nan_encountered = True
     except KeyboardInterrupt:
+        print("Training interrupted by user.")
+        # Ensure saves directory exists before saving
+        os.makedirs(f"./result/{EX_NAME}/saves/", exist_ok=True)
         model.save(f"./result/{EX_NAME}/saves/rl_model_{trial.number}")
-        print("Learning interrupted by user.")
     finally:
         # Free memory.
         if model.env is not None:
@@ -129,11 +139,13 @@ def objective(trial: optuna.Trial) -> float:
 
 
 if __name__ == "__main__":
-    result_dir = f"./result/{EX_NAME}"
-    if not os.path.exists("./result"):
-        os.makedirs("./result")
-    if not os.path.exists(result_dir):
-        os.makedirs(result_dir)
+    result_dir = f"./result/{EX_NAME}/"
+    saves_dir = f"./result/{EX_NAME}/saves/"
+
+    # Create directories safely
+    os.makedirs("./result", exist_ok=True)
+    os.makedirs(result_dir, exist_ok=True)
+    os.makedirs(saves_dir, exist_ok=True)
 
     # Set up the study.
     print("Setting up the study...")
@@ -142,7 +154,7 @@ if __name__ == "__main__":
     pruner = MedianPruner(
         n_startup_trials=N_STARTUP_TRIALS, n_warmup_steps=N_EVALUATIONS // 3
     )
-    if not os.path.exists(f"./{result_dir}/study.db"):
+    if not os.path.exists(f"./result/{EX_NAME}/study.db"):
         study = optuna.create_study(
             study_name=EX_NAME,
             sampler=sampler,
@@ -158,7 +170,6 @@ if __name__ == "__main__":
             pruner=pruner,
             storage=f"sqlite:///{result_dir}/study.db",
         )
-
     try:
         study.optimize(objective, n_trials=N_TRIALS, timeout=60 * 60 * 24)  # 1 day
     except KeyboardInterrupt:
